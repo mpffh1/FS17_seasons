@@ -18,15 +18,20 @@ function ssStorage:preLoad()
 end
 
 function ssStorage:loadMap()
+    g_seasons.environment:addSeasonLengthChangeListener(self)
 end
 
 function ssStorage:load(superFunc)
     local ret = superFunc(self)
-    --TODO: implement
-    --self.costsPerFillLevelAndDay = ???
+    self:calculateCosts()
     return ret
 end
 
-function ssStorage:placeableSeasonLengthChanged()
-    --TODO: implement
+function ssStorage:storageSeasonLengthChanged()
+    self:calculateCosts()
+end
+
+function ssStorage:calculateCosts()
+    local difficultyFac = 1 - ( g_currentMission.missionInfo.difficulty - 2 ) * 0.1
+    self.costsPerFillLevelAndDay = 0.01 / g_seasons.environment.daysInSeason * difficultyFac
 end

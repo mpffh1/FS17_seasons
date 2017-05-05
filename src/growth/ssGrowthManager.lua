@@ -12,7 +12,7 @@ ssGrowthManager = {}
 g_seasons.growthManager = ssGrowthManager
 
 -- constants
-ssGrowthManager.MAX_STATE = 99 -- needs to be set to the fruit's numGrowthStates if you are setting, or numGrowthStates-1 if you're incrementing
+ssGrowthManager.MAX_STATE = 99 -- needs to be set to the fruit's numGrowthStates if you are setting, or numGrowthStates - 1 if you're incrementing
 ssGrowthManager.CUT = 200
 ssGrowthManager.WITHERED = 300
 ssGrowthManager.FIRST_LOAD_TRANSITION = 999
@@ -25,6 +25,7 @@ ssGrowthManager.growthData = {}
 ssGrowthManager.canPlantData = {}
 ssGrowthManager.canHarvestData = {}
 ssGrowthManager.willGerminateData = {}
+ssGrowthManager.previousWillGerminateData = {}
 
 -- properties
 ssGrowthManager.fakeTransition = 1
@@ -33,8 +34,8 @@ ssGrowthManager.additionalFruitsChecked = false
 function ssGrowthManager:load(savegame, key)
     self.isNewSavegame = savegame == nil
 
-    self.growthManagerEnabled = ssXMLUtil.getXMLBool(savegame, key .. ".settings.growthManagerEnabled", true)
-    
+    self.growthManagerEnabled = ssXMLUtil.getBool(savegame, key .. ".settings.growthManagerEnabled", true)
+
     if savegame == nil then return end
 
     local i = 0
@@ -50,8 +51,8 @@ function ssGrowthManager:load(savegame, key)
 end
 
 function ssGrowthManager:save(savegame, key)
-    ssXMLUtil.setXMLBool(savegame, key .. ".settings.growthManagerEnabled", self.growthManagerEnabled)
-    
+    ssXMLUtil.setBool(savegame, key .. ".settings.growthManagerEnabled", self.growthManagerEnabled)
+
     local i = 0
     for fruitName in pairs(self.willGerminateData) do
         local fruitKey = string.format("%s.growthManager.willGerminate.fruit(%i)", key, i)
@@ -59,7 +60,7 @@ function ssGrowthManager:save(savegame, key)
         setXMLString(savegame, fruitKey .. "#fruitName", tostring(fruitName))
         setXMLBool(savegame, fruitKey .. "#value", self.willGerminateData[fruitName])
 
-        i = i+1
+        i = i + 1
     end
 end
 
@@ -70,14 +71,14 @@ function ssGrowthManager:loadMap(name)
     end
 
     --lock changing the growth speed option and set growth rate to 1 (no growth)
-    g_currentMission:setPlantGrowthRate(1,nil)
+    g_currentMission:setPlantGrowthRate(1, nil)
     g_currentMission:setPlantGrowthRateLocked(true)
 
     if not self:getGrowthData() then
-        logInfo("ssGrowthManager:" ,"required data not loaded. ssGrowthManager disabled")
+        logInfo("ssGrowthManager:" , "required data not loaded. ssGrowthManager disabled")
         return
     end
-    
+
     self:buildCanPlantData(self.defaultFruitsData)
     self:buildCanHarvestData()
 
@@ -99,7 +100,7 @@ end
 -- load all growth data
 -- returns false, if error
 function ssGrowthManager:getGrowthData()
-    local defaultFruitsData,growthData = ssGrowthManagerData:loadAllData()
+    local defaultFruitsData, growthData = ssGrowthManagerData:loadAllData()
 
     if defaultFruitsData ~= nil then
         self.defaultFruitsData = defaultFruitsData
@@ -145,13 +146,12 @@ function ssGrowthManager:transitionChanged()
     else
         log("GrowthManager enabled - transition changed to: " .. transition)
         ssDensityMapScanner:queueJob("ssGrowthManagerHandleGrowth", transition)
-        self:rebuildWillGerminateData()
     end
 end
 
 function ssGrowthManager:update(dt)
     if self.additionalFruitsChecked == true or self.growthManagerEnabled == false then return end
-   
+
     self.additionalFruitsChecked = true
     for index, fruit in pairs(g_currentMission.fruits) do
         local fruitName = FruitUtil.fruitIndexToDesc[index].name
@@ -165,21 +165,25 @@ function ssGrowthManager:update(dt)
 end
 
 -- reset the willGerminateData and rebuild it based on the current transition
--- called just after transitionChanged
 function ssGrowthManager:rebuildWillGerminateData()
     self.willGerminateData = {}
-    self:dayChanged()
-end
-
--- handle dayChanged event
--- check if canSow and update willGerminate accordingly
-function ssGrowthManager:dayChanged()
-    if self.growthManagerEnabled == false then return end
 
     for fruitName, transition in pairs(self.canPlantData) do
         if self.canPlantData[fruitName][g_seasons.environment:transitionAtDay()] == true then
             self.willGerminateData[fruitName] = ssWeatherManager:canSow(fruitName)
         end
+    end
+end
+
+-- handle dayChanged event
+-- check if canSow and update willGerminate accordingly
+function ssGrowthManager:dayChanged()
+    if self.isNewSavegame == true then
+        self:rebuildWillGerminateData()
+        self.previousWillGerminateData = Utils.copyTable(self.willGerminateData)
+    else
+        self.previousWillGerminateData = Utils.copyTable(self.willGerminateData)
+        self:rebuildWillGerminateData()
     end
 end
 
@@ -209,7 +213,7 @@ function ssGrowthManager:handleGrowth(startWorldX, startWorldZ, widthWorldX, wid
                 self:incrementExtraGrowthState(fruit, fruitName, x, z, widthX, widthZ, heightX, heightZ, transition)
             end
         end  -- end of if self.growthData[transition][fruitName] ~= nil then
-    end  -- end of for index,fruit in pairs(g_currentMission.fruits) do
+    end  -- end of for index, fruit in pairs(g_currentMission.fruits) do
 end
 
 --set growth state of fruit to a particular state based on transition
@@ -245,7 +249,7 @@ end
 function ssGrowthManager:incrementGrowthState(fruit, fruitName, x, z, widthX, widthZ, heightX, heightZ, transition)
     local useMaxState = false
     local minState = self.growthData[transition][fruitName].normalGrowthState
-    if minState == 1 and self.willGerminateData[fruitName] == false then --check if the fruit has just been planted and delay growth if germination temp not reached
+    if minState == 1 and self.previousWillGerminateData[fruitName] == false then --check if the fruit has just been planted and delay growth if germination temp not reached
         return
     end
 
@@ -256,7 +260,7 @@ function ssGrowthManager:incrementGrowthState(fruit, fruitName, x, z, widthX, wi
         local maxState = self.growthData[transition][fruitName].normalGrowthMaxState
 
         if maxState == self.MAX_STATE then
-            maxState = fruitTypeGrowth.numGrowthStates-1
+            maxState = fruitTypeGrowth.numGrowthStates - 1
         end
         setDensityMaskParams(fruit.id, "between", minState, maxState)
         useMaxState = true
@@ -315,8 +319,8 @@ function ssGrowthManager:buildCanPlantData(fruitData)
                     break
                 end
 
-                if transition == g_seasons.environment.TRANSITION_EARLY_WINTER 
-                        or transition == g_seasons.environment.TRANSITION_MID_WINTER 
+                if transition == g_seasons.environment.TRANSITION_EARLY_WINTER
+                        or transition == g_seasons.environment.TRANSITION_MID_WINTER
                         or transition == g_seasons.environment.TRANSITION_LATE_WINTER then --hack for winter planting
                     table.insert(transitionTable, transition , false)
                 else
@@ -356,7 +360,7 @@ function ssGrowthManager:buildCanHarvestData()
         local transitionTable = {}
         local plantedTransition = 1
         local fruitNumStates = FruitUtil.fruitTypeGrowths[fruitName].numGrowthStates
-        
+
         for plantedTransition = 1, self.MAX_ALLOWABLE_GROWTH_PERIOD do
              if self.canPlantData[fruitName][plantedTransition] == true and fruitName ~= "poplar" and fruitName ~= "grass" then
                 local growthState = 1
@@ -370,13 +374,13 @@ function ssGrowthManager:buildCanHarvestData()
                     if growthState == fruitNumStates then
                         transitionTable[transitionToCheck] = true
                     end
-                    
+
                     transitionToCheck = transitionToCheck + 1
                     safetyCheck = safetyCheck + 1
                     if transitionToCheck > g_seasons.environment.TRANSITIONS_IN_YEAR then transitionToCheck = 1 end
                     if safetyCheck > 15 then break end --so we don't end up in infinite loop if growth pattern is not correct
                 end
-                
+
             end
         end
         --fill in the gaps

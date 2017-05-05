@@ -33,10 +33,10 @@ function ssWeatherManagerDailyEvent:writeStream(streamId, connection)
     streamWriteFloat32(streamId, self.soilTemp)
 
     streamWriteInt16(streamId, self.day.day)
+    streamWriteInt16(streamId, self.day.season)
     streamWriteString(streamId, self.day.weatherState)
     streamWriteFloat32(streamId, self.day.highTemp)
     streamWriteFloat32(streamId, self.day.lowTemp)
-    streamWriteFloat32(streamId, self.soilTemp)
 
     streamWriteInt16(streamId, self.rain.startDay)
     streamWriteFloat32(streamId, self.rain.endDayTime)
@@ -54,7 +54,7 @@ function ssWeatherManagerDailyEvent:readStream(streamId, connection)
     self.soilTemp = streamReadFloat32(streamId)
 
     day.day = streamReadInt16(streamId)
-    day.season = g_seasons.environment:seasonAtDay(day.day)
+    day.season = streamReadInt16(streamId)
     day.weatherState = streamReadString(streamId)
     day.highTemp = streamReadFloat32(streamId)
     day.lowTemp = streamReadFloat32(streamId)
@@ -93,7 +93,8 @@ function ssWeatherManagerDailyEvent:run(connection)
         table.insert(ssWeatherManager.forecast, self.day)
 
         table.insert(ssWeatherManager.weather, self.rain)
-        ssWeatherManager:overwriteRaintable()
         table.remove(ssWeatherManager.weather, 1)
+
+        ssWeatherManager:overwriteRaintable()
     end
 end

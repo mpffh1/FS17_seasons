@@ -15,10 +15,10 @@ source(g_seasons.modDir .. "src/events/ssBaleFermentEvent.lua")
 function ssBaleManager:preLoad()
     Bale.loadFromAttributesAndNodes = Utils.overwrittenFunction(Bale.loadFromAttributesAndNodes, ssBaleManager.baleLoadFromAttributesAndNodes)
     Bale.getSaveAttributesAndNodes = Utils.overwrittenFunction(Bale.getSaveAttributesAndNodes, ssBaleManager.baleGetSaveAttributesAndNodes)
-    Bale.updateTick = Utils.overwrittenFunction(Bale.updateTick, ssBaleManager.baleUpdateTick)
-    BaleWrapper.doStateChange = Utils.overwrittenFunction(BaleWrapper.doStateChange, ssBaleManager.baleWrapperDoStateChange)
-    Bale.readStream = Utils.overwrittenFunction(Bale.readStream, ssBaleManager.baleReadStream)
-    Bale.writeStream = Utils.overwrittenFunction(Bale.writeStream, ssBaleManager.baleWriteStream)
+    Bale.updateTick = Utils.appendedFunction(Bale.updateTick, ssBaleManager.baleUpdateTick)
+    BaleWrapper.doStateChange = Utils.appendedFunction(BaleWrapper.doStateChange, ssBaleManager.baleWrapperDoStateChange)
+    Bale.readStream = Utils.appendedFunction(Bale.readStream, ssBaleManager.baleReadStream)
+    Bale.writeStream = Utils.appendedFunction(Bale.writeStream, ssBaleManager.baleWriteStream)
 end
 
 function ssBaleManager:loadMap(name)
@@ -32,7 +32,7 @@ function ssBaleManager:loadMap(name)
 end
 
 function ssBaleManager:reduceFillLevel()
-    for index,object in pairs(g_currentMission.itemsToSave) do
+    for index, object in pairs(g_currentMission.itemsToSave) do
         -- only check bales
         if object.item:isa(Bale) then
             local bale = object.item
@@ -59,7 +59,7 @@ function ssBaleManager:reduceFillLevel()
                     local z1 = bale.sendPosZ - dim.length
                     local z2 = bale.sendPosZ + dim.length
 
-                    local x,z, widthX,widthZ, heightX,heightZ = Utils.getXZWidthAndHeight(g_currentMission.terrainDetailHeightId, x0,z0, x1,z1, x2,z2)
+                    local x, z, widthX, widthZ, heightX, heightZ = Utils.getXZWidthAndHeight(g_currentMission.terrainDetailHeightId, x0, z0, x1, z1, x2, z2)
 
                     local density, _, _ = getDensityMaskedParallelogram(ssSnow.snowMaskId, x, z, widthX, widthZ, heightX, heightZ, 0, 5, ssSnow.snowMaskId, ssSnow.SNOW_MASK_FIRST_CHANNEL, ssSnow.SNOW_MASK_NUM_CHANNELS)
 
@@ -111,7 +111,7 @@ function ssBaleManager:seasonLengthChanged()
 end
 
 function ssBaleManager:removeBale()
-    for index,object in pairs(g_currentMission.itemsToSave) do
+    for index, object in pairs(g_currentMission.itemsToSave) do
         if object.item:isa(Bale) then
             local bale = object.item
 
@@ -120,7 +120,7 @@ function ssBaleManager:removeBale()
 
                 -- when fillLevel is less than volume (i.e. uncompressed) the bale will be deleted
                 if bale.baleDiameter ~= nil then
-                    volume = math.pi*(bale.baleDiameter / 2 )^2 * bale.baleWidth * 1000
+                    volume = math.pi * (bale.baleDiameter / 2 ) ^ 2 * bale.baleWidth * 1000
                 else
                     volume = bale.baleWidth * bale.baleLength * bale.baleHeight * 1000
                 end
@@ -152,7 +152,7 @@ function ssBaleManager:delete(singleBale)
 end
 
 function ssBaleManager:incrementBaleAge()
-    for index,object in pairs(g_currentMission.itemsToSave) do
+    for index, object in pairs(g_currentMission.itemsToSave) do
         if object.item:isa(Bale) then
             local bale = object.item
 
@@ -177,8 +177,8 @@ function ssBaleManager:calculateBaleReduction(singleBale)
             singleBale.age = 0
         end
 
-        local dayReductionFactor = 1 - ( ( 2.4 * singleBale.age / daysInSeason + 1.2 )^5.75) / 100
-        reductionFactor = 1 - ( 1 - dayReductionFactor)/24
+        local dayReductionFactor = 1 - ( (2.4 * singleBale.age / daysInSeason + 1.2 ) ^ 5.75) / 100
+        reductionFactor = 1 - (1 - dayReductionFactor) / 24
     end
 
     return reductionFactor
@@ -194,25 +194,25 @@ end
 --------------------------------------------------------
 
 -- from fatov - balewrapper determines what bales to ferment
-function ssBaleManager:baleWrapperDoStateChange(superFunc, id, nearestBaleServerId)
-    superFunc(self, id, nearestBaleServerId)
+function ssBaleManager:baleWrapperDoStateChange(id, nearestBaleServerId)
 
     if self.isServer then
         if id == BaleWrapper.CHANGE_WRAPPER_BALE_DROPPED and self.lastDroppedBale ~= nil then
-           if self.lastDroppedBale.fillType == FillUtil.FILLTYPE_SILAGE and self.lastDroppedBale.wrappingState >= 1 then
+            local bale = self.lastDroppedBale
+
+           if bale.fillType == FillUtil.FILLTYPE_SILAGE and bale.wrappingState >= 1 then
                 --initiate fermenting process
-                self.lastDroppedBale.fillType = FillUtil.FILLTYPE_GRASS_WINDROW
-                self.lastDroppedBale.fermentingProcess = 0
-                ssBaleFermentEvent:sendEvent(self.lastDroppedBale)
+                bale.fillType = FillUtil.FILLTYPE_GRASS_WINDROW
+                bale.fermentingProcess = 0
+
+                ssBaleFermentEvent:sendEvent(bale)
             end
         end
     end
 end
 
 -- from fatov - ferment bales
-function ssBaleManager:baleUpdateTick(superFunc, dt)
-    superFunc(self, dt)
-
+function ssBaleManager:baleUpdateTick(dt)
     if self.isServer then
         if self.fermentingProcess ~= nil then
             self.fermentingProcess = self.fermentingProcess + ((dt * 0.001 * g_currentMission.missionInfo.timeScale) / ssBaleManager.fermentationTime)
@@ -255,18 +255,14 @@ function ssBaleManager:baleGetSaveAttributesAndNodes(superFunc, nodeIdent)
     return attributes, nodes
 end
 
-function ssBaleManager:baleWriteStream(superFunc, streamId, connection)
-    superFunc(self, streamId, connection)
-
+function ssBaleManager:baleWriteStream(streamId, connection)
     local isFermenting = self.fermentingProcess ~= nil
 
     streamWriteBool(streamId, isFermenting)
 end
 
-function ssBaleManager:baleReadStream(superFunc, streamId, connection)
-    superFunc(self, streamId, connection)
-
-    if streamReadBool(streamId,connection) then
+function ssBaleManager:baleReadStream(streamId, connection)
+    if streamReadBool(streamId, connection) then
         self.fillType = FillUtil.FILLTYPE_GRASS_WINDROW
     end
 end

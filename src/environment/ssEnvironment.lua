@@ -57,20 +57,20 @@ function ssEnvironment:preLoad()
 end
 
 function ssEnvironment:load(savegame, key)
-    self.daysInSeason = Utils.clamp(ssXMLUtil.getXMLInt(savegame, key .. ".settings.daysInSeason", 9), 3, 12)
-    self.latestSeason = ssXMLUtil.getXMLInt(savegame, key .. ".environment.latestSeason", -1)
-    self.latestTransition = ssXMLUtil.getXMLInt(savegame, key .. ".environment.latestGrowthStage", 0) --todo: fix this ... leaving this as stage in the xml file until release
+    self.daysInSeason = Utils.clamp(ssXMLUtil.getInt(savegame, key .. ".settings.daysInSeason", 9), 3, 12)
+    self.latestSeason = ssXMLUtil.getInt(savegame, key .. ".environment.latestSeason", -1)
+    self.latestTransition = ssXMLUtil.getInt(savegame, key .. ".environment.latestGrowthStage", 0) --todo: fix this ... leaving this as stage in the xml file until release
                                                                                                             --to not break existing test save games
-    self.currentDayOffset = ssXMLUtil.getXMLInt(savegame, key .. ".environment.currentDayOffset_DO_NOT_CHANGE", 0)
+    self.currentDayOffset = ssXMLUtil.getInt(savegame, key .. ".environment.currentDayOffset_DO_NOT_CHANGE", 0)
 
     self._doInitalDayEvent = savegame == nil
 end
 
 function ssEnvironment:save(savegame, key)
-    ssXMLUtil.setXMLInt(savegame, key .. ".settings.daysInSeason", self.daysInSeason)
-    ssXMLUtil.setXMLInt(savegame, key .. ".environment.latestSeason", self.latestSeason)
-    ssXMLUtil.setXMLInt(savegame, key .. ".environment.latestGrowthStage", self.latestTransition) --TODO: fix this before release
-    ssXMLUtil.setXMLInt(savegame, key .. ".environment.currentDayOffset_DO_NOT_CHANGE", self.currentDayOffset)
+    ssXMLUtil.setInt(savegame, key .. ".settings.daysInSeason", self.daysInSeason)
+    ssXMLUtil.setInt(savegame, key .. ".environment.latestSeason", self.latestSeason)
+    ssXMLUtil.setInt(savegame, key .. ".environment.latestGrowthStage", self.latestTransition) --TODO: fix this before release
+    ssXMLUtil.setInt(savegame, key .. ".environment.currentDayOffset_DO_NOT_CHANGE", self.currentDayOffset)
 end
 
 function ssEnvironment:loadMap(name)
@@ -83,19 +83,19 @@ function ssEnvironment:loadMap(name)
 end
 
 function ssEnvironment:readStream(streamId, connection)
-    g_currentMission.environment.currentDay = streamReadInt32(streamId)
-    self.daysInSeason = streamReadInt32(streamId)
-    self.latestSeason = streamReadInt32(streamId)
-    self.latestTransition = streamReadInt32(streamId)
-    self.currentDayOffset = streamReadInt32(streamId)
+    g_currentMission.environment.currentDay = streamReadInt16(streamId)
+    self.daysInSeason = streamReadInt16(streamId)
+    self.latestSeason = streamReadInt16(streamId)
+    self.latestTransition = streamReadInt16(streamId)
+    self.currentDayOffset = streamReadInt16(streamId)
 end
 
 function ssEnvironment:writeStream(streamId, connection)
-    streamWriteInt32(streamId, g_currentMission.environment.currentDay)
-    streamWriteInt32(streamId, self.daysInSeason)
-    streamWriteInt32(streamId, self.latestSeason)
-    streamWriteInt32(streamId, self.latestTransition)
-    streamWriteInt32(streamId, self.currentDayOffset)
+    streamWriteInt16(streamId, g_currentMission.environment.currentDay)
+    streamWriteInt16(streamId, self.daysInSeason)
+    streamWriteInt16(streamId, self.latestSeason)
+    streamWriteInt16(streamId, self.latestTransition)
+    streamWriteInt16(streamId, self.currentDayOffset)
 end
 
 function ssEnvironment:update(dt)
@@ -226,7 +226,7 @@ function ssEnvironment:dayInSeason(currentDay)
 
     local season = self:seasonAtDay(currentDay) -- 0-3
     local dayInYear = math.fmod(currentDay - 1, self.daysInSeason * self.SEASONS_IN_YEAR) + 1 -- 1+
-    return (dayInYear - 1 - season * self.daysInSeason) + 1 -- 1-daysInSeason
+    return (dayInYear - 1 - season * self.daysInSeason) + 1 -- 1 - daysInSeason
 end
 
 -- Starts with 0
@@ -244,7 +244,7 @@ function ssEnvironment:nextTransition()
     if cGT == self.TRANSITIONS_IN_YEAR then
         return 1
     else
-        return cGT+1
+        return cGT + 1
     end
 end
 
@@ -256,10 +256,10 @@ function ssEnvironment:transitionAtDay(dayNumber)
 
     local season = self:seasonAtDay(dayNumber)
     local seasonTransition = self:getTransitionInSeason(dayNumber)
-    return (seasonTransition + (season*3))
+    return (seasonTransition + (season * 3))
 end
 
---this funtion returns the transition within a season (1,2,3)
+--this funtion returns the transition within a season (1, 2, 3)
 --most functions should not call this directly. use transitionAtDay instead to get the current transition
 function ssEnvironment:getTransitionInSeason(currentDay)
     if (currentDay == nil) then

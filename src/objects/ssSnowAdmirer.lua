@@ -37,7 +37,12 @@ function ssSnowAdmirer:delete()
 end
 
 function ssSnowAdmirer:updateVisibility()
-    local visible = g_seasons.weather:getSnowHeight() > 0
+    -- Use applied snow depth: weather can state it is > 0 even though nothing is visible
+    local visible = g_seasons.weather.snowDepth >= g_seasons.snow.LAYER_HEIGHT
+
+    if not self.showWhenSnow then
+        visible = not visible
+    end
 
     setVisibility(self.id, visible)
     setCollisionMask(self.id, visible and self.collisionMask or 0)

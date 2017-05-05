@@ -11,23 +11,24 @@ ssEconomy = {}
 g_seasons.economy = ssEconomy
 
 ssEconomy.EQUITY_LOAN_RATIO = 0.3
+ssEconomy.DEFAULT_FACTOR = 1
 
 function ssEconomy:load(savegame, key)
-    self.aiPricePerHourWork = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.aiPricePerHourWork", 1650)
-    self.aiPricePerHourOverwork = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.aiPricePerHourOverwork", 2475)
-    self.aiDayStart = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.aiDayStart", 6)
-    self.aiDayEnd = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.aiDayEnd", 18)
-    self.loanMax = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.loanMax", 1500000)
-    self.baseLoanInterest = ssXMLUtil.getXMLFloat(savegame, key .. ".settings.baseLoanInterest", 10)
+    self.aiPricePerHourWork = ssXMLUtil.getFloat(savegame, key .. ".settings.aiPricePerHourWork", 1650)
+    self.aiPricePerHourOverwork = ssXMLUtil.getFloat(savegame, key .. ".settings.aiPricePerHourOverwork", 2475)
+    self.aiDayStart = ssXMLUtil.getFloat(savegame, key .. ".settings.aiDayStart", 6)
+    self.aiDayEnd = ssXMLUtil.getFloat(savegame, key .. ".settings.aiDayEnd", 18)
+    self.loanMax = ssXMLUtil.getFloat(savegame, key .. ".settings.loanMax", 1500000)
+    self.baseLoanInterest = ssXMLUtil.getFloat(savegame, key .. ".settings.baseLoanInterest", 10)
 end
 
 function ssEconomy:save(savegame, key)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.aiPricePerHourWork", self.aiPricePerHourWork)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.aiPricePerHourOverwork", self.aiPricePerHourOverwork)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.aiDayStart", self.aiDayStart)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.aiDayEnd", self.aiDayEnd)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.loanMax", self.loanMax)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".settings.baseLoanInterest", self.baseLoanInterest)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.aiPricePerHourWork", self.aiPricePerHourWork)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.aiPricePerHourOverwork", self.aiPricePerHourOverwork)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.aiDayStart", self.aiDayStart)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.aiDayEnd", self.aiDayEnd)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.loanMax", self.loanMax)
+    ssXMLUtil.setFloat(savegame, key .. ".settings.baseLoanInterest", self.baseLoanInterest)
 end
 
 function ssEconomy:loadMap(name)
@@ -174,8 +175,8 @@ function ssEconomy:loadFromXML(path)
     end
 
     --get fieldPriceFactor from economy.xml
-    self.fieldPriceFactor = ssXMLUtil.getXMLFloat(file, "economy.fieldPriceFactor", 1.0)
-    
+    self.fieldPriceFactor = ssXMLUtil.getFloat(file, "economy.fieldPriceFactor", 1.0)
+
     delete(file)
 end
 
@@ -260,7 +261,7 @@ function ssEconomy:getEquity()
 end
 
 function ssEconomy:getLoanCap()
-    local roundedTo5000 = math.floor(ssEconomy.EQUITY_LOAN_RATIO * self:getEquity() / 5000) * 5000
+    local roundedTo5000 = math.floor(self.EQUITY_LOAN_RATIO * self:getEquity() / 5000) * 5000
     return Utils.clamp(roundedTo5000, 300000, ssEconomy.loanMax)
 end
 
@@ -314,7 +315,7 @@ end
 
 function ssEconomy:getBaleFactor(fillType)
     if self.repricing.bales[fillType] == nil then
-        return 1
+        return self.DEFAULT_FACTOR
     end
 
     return self:lerpFactors(self.repricing.bales[fillType])
@@ -322,7 +323,7 @@ end
 
 function ssEconomy:getAnimalFactor(animal)
     if self.repricing.animals[animal] == nil then
-        return 1
+        return self.DEFAULT_FACTOR
     end
 
     return self:lerpFactors(self.repricing.animals[animal])
@@ -330,7 +331,7 @@ end
 
 function ssEconomy:getFillFactor(fillType)
     if self.repricing.fills[fillType] == nil then
-        return 1
+        return self.DEFAULT_FACTOR
     end
 
     return self:lerpFactors(self.repricing.fills[fillType])
@@ -383,7 +384,7 @@ function ssEconomy:updateFieldPrices()
     --don't do anything if map has no fields
     if not (g_currentMission.fieldDefinitionBase ~= nil and g_currentMission.fieldDefinitionBase.fieldDefs ~= nil) then return end
 
-    for _,fieldDef in pairs(g_currentMission.fieldDefinitionBase.fieldDefs) do
+    for _, fieldDef in pairs(g_currentMission.fieldDefinitionBase.fieldDefs) do
         fieldDef.fieldPriceInitial  = fieldDef.fieldPriceInitial * self.fieldPriceFactor
     end
 end

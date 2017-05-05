@@ -10,18 +10,20 @@
 ssDensityMapScanner = {}
 g_seasons.dms = ssDensityMapScanner
 
+ssDensityMapScanner.TIMESPLIT = 25 -- ms
+
 function ssDensityMapScanner:load(savegame, key)
-    if ssXMLUtil.hasXMLProperty(savegame, key .. ".densityMapScanner.currentJob") then
+    if ssXMLUtil.hasProperty(savegame, key .. ".densityMapScanner.currentJob") then
         local job = {}
 
-        job.x = ssXMLUtil.getXMLInt(savegame, key .. ".densityMapScanner.currentJob.x", 0)
-        job.z = ssXMLUtil.getXMLInt(savegame, key .. ".densityMapScanner.currentJob.z", 0)
-        job.callbackId = ssXMLUtil.getXMLString(savegame, key .. ".densityMapScanner.currentJob.callbackId")
-        job.parameter = ssXMLUtil.getXMLString(savegame, key .. ".densityMapScanner.currentJob.parameter")
-        job.numSegments = ssXMLUtil.getXMLInt(savegame, key .. ".densityMapScanner.currentJob.numSegments", 1)
+        job.x = ssXMLUtil.getInt(savegame, key .. ".densityMapScanner.currentJob.x", 0)
+        job.z = ssXMLUtil.getInt(savegame, key .. ".densityMapScanner.currentJob.z", 0)
+        job.callbackId = ssXMLUtil.getString(savegame, key .. ".densityMapScanner.currentJob.callbackId")
+        job.parameter = ssXMLUtil.getString(savegame, key .. ".densityMapScanner.currentJob.parameter")
+        job.numSegments = ssXMLUtil.getInt(savegame, key .. ".densityMapScanner.currentJob.numSegments", 1)
 
         self.currentJob = job
-        
+
         log("[ssDensityMapScanner] Loaded current job:", job.callbackId, "with parameter", job.parameter)
     end
 
@@ -31,12 +33,12 @@ function ssDensityMapScanner:load(savegame, key)
     local i = 0
     while true do
         local ikey = string.format("%s.densityMapScanner.queue.job(%d)", key, i)
-        if not ssXMLUtil.hasXMLProperty(savegame, ikey) then break end
+        if not ssXMLUtil.hasProperty(savegame, ikey) then break end
 
         local job = {}
 
-        job.callbackId = ssXMLUtil.getXMLString(savegame, ikey .. "#callbackId")
-        job.parameter = ssXMLUtil.getXMLString(savegame, ikey .. "#parameter")
+        job.callbackId = ssXMLUtil.getString(savegame, ikey .. "#callbackId")
+        job.parameter = ssXMLUtil.getString(savegame, ikey .. "#parameter")
 
         self.queue:push(job)
 
@@ -50,21 +52,21 @@ function ssDensityMapScanner:save(savegame, key)
     removeXMLProperty(savegame, key .. ".densityMapScanner")
 
     if self.currentJob ~= nil then
-        ssXMLUtil.setXMLInt(savegame, key .. ".densityMapScanner.currentJob.x", self.currentJob.x)
-        ssXMLUtil.setXMLInt(savegame, key .. ".densityMapScanner.currentJob.z", self.currentJob.z)
-        ssXMLUtil.setXMLString(savegame, key .. ".densityMapScanner.currentJob.callbackId", self.currentJob.callbackId)
-        ssXMLUtil.setXMLString(savegame, key .. ".densityMapScanner.currentJob.parameter", tostring(self.currentJob.parameter))
-        ssXMLUtil.setXMLInt(savegame, key .. ".densityMapScanner.currentJob.numSegments", self.currentJob.numSegments)
+        ssXMLUtil.setInt(savegame, key .. ".densityMapScanner.currentJob.x", self.currentJob.x)
+        ssXMLUtil.setInt(savegame, key .. ".densityMapScanner.currentJob.z", self.currentJob.z)
+        ssXMLUtil.setString(savegame, key .. ".densityMapScanner.currentJob.callbackId", self.currentJob.callbackId)
+        ssXMLUtil.setString(savegame, key .. ".densityMapScanner.currentJob.parameter", tostring(self.currentJob.parameter))
+        ssXMLUtil.setInt(savegame, key .. ".densityMapScanner.currentJob.numSegments", self.currentJob.numSegments)
     end
 
     -- Save queue
     self.queue:iteratePushOrder(function (job, i)
         local ikey = string.format("%s.densityMapScanner.queue.job(%d)", key, i - 1)
 
-        ssXMLUtil.setXMLString(savegame, ikey .. "#callbackId", job.callbackId)
+        ssXMLUtil.setString(savegame, ikey .. "#callbackId", job.callbackId)
 
         if job.parameter ~= nil then
-            ssXMLUtil.setXMLString(savegame, ikey .. "#parameter", tostring(job.parameter))
+            ssXMLUtil.setString(savegame, ikey .. "#parameter", tostring(job.parameter))
         end
     end)
 end
@@ -74,6 +76,8 @@ function ssDensityMapScanner:loadMap(name)
         if self.queue == nil then
             self.queue = ssQueue:new()
         end
+
+        self.timeCounter = 0
     end
 end
 
@@ -83,11 +87,12 @@ function ssDensityMapScanner:update(dt)
     if self.currentJob == nil then
         self.currentJob = self.queue:pop()
 
+        -- A new job has started
         if self.currentJob then
             self.currentJob.x = 0
             self.currentJob.z = 0
 
-            if g_dedicatedServerInfo ~= nil or g_currentMission.missionInfo.timeScale > 120 then
+            if g_dedicatedServerInfo ~= nil then
                 self.currentJob.numSegments = 1 -- Not enough time to do it section by section.
             else
                 -- Must be evenly dividable with mapsize.
@@ -99,8 +104,17 @@ function ssDensityMapScanner:update(dt)
     end
 
     if self.currentJob ~= nil then
-        if not self:run(self.currentJob) then
-            self.currentJob = nil
+        self.timeCounter = self.timeCounter + dt
+
+        -- Use a timer to spread updates: only on SP, as it would only lag on MP
+        -- due to density map synchronization
+        if g_dedicatedServerInfo ~= nil or self.timeCounter >= ssDensityMapScanner.TIMESPLIT then
+            if not self:run(self.currentJob) then
+                self.currentJob = nil
+            end
+
+            -- Reset timer
+            self.timeCounter = 0
         end
     end
 end
@@ -145,7 +159,7 @@ function ssDensityMapScanner:run(job)
     -- Run the callback
     local callback = self.callbacks[job.callbackId]
     if callback == nil then
-        logInfo("[ssDensityMapScanner] Tried to run unknown callback '", job.callbackId,"'")
+        logInfo("[ssDensityMapScanner] Tried to run unknown callback '", job.callbackId, "'")
 
         return false
     end

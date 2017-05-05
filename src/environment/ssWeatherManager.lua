@@ -21,11 +21,11 @@ source(g_seasons.modDir .. "src/events/ssWeatherManagerHailEvent.lua")
 
 function ssWeatherManager:load(savegame, key)
     -- Load or set default values
-    self.snowDepth = ssXMLUtil.getXMLFloat(savegame, key .. ".weather.snowDepth", 0.0)
-    self.soilTemp = ssXMLUtil.getXMLFloat(savegame, key .. ".weather.soilTemp", 4.9)
-    self.prevHighTemp = ssXMLUtil.getXMLFloat(savegame, key .. ".weather.prevHighTemp", 0.0)
-    self.cropMoistureContent = ssXMLUtil.getXMLFloat(savegame, key .. ".weather.cropMoistureContent", 15.0)
-    self.moistureEnabled = ssXMLUtil.getXMLBool(savegame, key .. ".weather.moistureEnabled", true)
+    self.snowDepth = ssXMLUtil.getFloat(savegame, key .. ".weather.snowDepth")
+    self.soilTemp = ssXMLUtil.getFloat(savegame, key .. ".weather.soilTemp")
+    self.prevHighTemp = ssXMLUtil.getFloat(savegame, key .. ".weather.prevHighTemp")
+    self.cropMoistureContent = ssXMLUtil.getFloat(savegame, key .. ".weather.cropMoistureContent", 15.0)
+    self.moistureEnabled = ssXMLUtil.getBool(savegame, key .. ".weather.moistureEnabled", true)
 
     -- load forecast
     self.forecast = {}
@@ -33,7 +33,7 @@ function ssWeatherManager:load(savegame, key)
     local i = 0
     while true do
         local dayKey = string.format("%s.weather.forecast.day(%i)", key, i)
-        if not ssXMLUtil.hasXMLProperty(savegame, dayKey) then break end
+        if not ssXMLUtil.hasProperty(savegame, dayKey) then break end
 
         local day = {}
 
@@ -54,7 +54,7 @@ function ssWeatherManager:load(savegame, key)
     i = 0
     while true do
         local rainKey = string.format("%s.weather.forecast.rain(%i)", key, i)
-        if not ssXMLUtil.hasXMLProperty(savegame, rainKey) then break end
+        if not ssXMLUtil.hasProperty(savegame, rainKey) then break end
 
         local rain = {}
 
@@ -73,11 +73,11 @@ end
 function ssWeatherManager:save(savegame, key)
     local i = 0
 
-    ssXMLUtil.setXMLFloat(savegame, key .. ".weather.snowDepth", self.snowDepth)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".weather.soilTemp", self.soilTemp)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".weather.prevHighTemp", self.prevHighTemp)
-    ssXMLUtil.setXMLFloat(savegame, key .. ".weather.cropMoistureContent", self.cropMoistureContent)
-    ssXMLUtil.setXMLBool(savegame, key .. ".weather.moistureEnabled", self.moistureEnabled)
+    ssXMLUtil.setFloat(savegame, key .. ".weather.snowDepth", self.snowDepth)
+    ssXMLUtil.setFloat(savegame, key .. ".weather.soilTemp", self.soilTemp)
+    ssXMLUtil.setFloat(savegame, key .. ".weather.prevHighTemp", self.prevHighTemp)
+    ssXMLUtil.setFloat(savegame, key .. ".weather.cropMoistureContent", self.cropMoistureContent)
+    ssXMLUtil.setBool(savegame, key .. ".weather.moistureEnabled", self.moistureEnabled)
 
     for i = 0, table.getn(self.forecast) - 1 do
         local dayKey = string.format("%s.weather.forecast.day(%i)", key, i)
@@ -119,6 +119,7 @@ function ssWeatherManager:loadMap(name)
     -- Load data from the mod and from a map
     self.temperatureData = {}
     self.rainData = {}
+    self.startValues = {}
     self:loadFromXML(g_seasons.modDir .. "data/weather.xml")
 
     -- Modded
@@ -126,15 +127,16 @@ function ssWeatherManager:loadMap(name)
         self:loadFromXML(path)
     end
 
+    -- Set snowDepth (can be more than 0 with custom weather)
+    self.snowDepth = Utils.getNoNil(self.snowDepth, self.startValues.snowDepth)
+
     -- Load germination temperatures
     self.germinateTemp = {}
     self:loadGerminateTemperature(g_seasons.modDir .. "data/growth.xml")
 
-    local modPath = ssUtil.getModMapDataPath("seasons_growth.xml")
-    if modPath ~= nil then
-        self:loadGerminateTemperature(modPath)
+    for _, path in ipairs(g_seasons:getModPaths("growth")) do
+        self:loadGerminateTemperature(path)
     end
-
 
     if g_currentMission:getIsServer() then
         if table.getn(self.forecast) == 0 or self.forecast[1].day ~= g_seasons.environment:currentDay() then
@@ -143,6 +145,7 @@ function ssWeatherManager:loadMap(name)
         --self.weather = g_currentMission.environment.rains -- should only be done for a fresh savegame, otherwise read from savegame
 
         self:overwriteRaintable()
+        self:setupStartValues()
     end
 end
 
@@ -151,11 +154,10 @@ function ssWeatherManager:readStream(streamId, connection)
     self.soilTemp = streamReadFloat32(streamId)
     self.cropMoistureContent = streamReadFloat32(streamId)
     self.moistureEnabled = streamReadBool(streamId)
+    self.prevHighTemp = streamReadFloat32(streamId)
 
     self.forecastLength = streamReadUInt8(streamId)
     local numRains = streamReadUInt8(streamId)
-
-    self.prevHighTemp = streamReadFloat32(streamId)
 
     -- load forecast
     self.forecast = {}
@@ -164,7 +166,7 @@ function ssWeatherManager:readStream(streamId, connection)
         local day = {}
 
         day.day = streamReadInt16(streamId)
-        day.season = g_seasons.environment:seasonAtDay(day.day)
+        day.season = streamReadUInt8(streamId)
 
         day.weatherState = streamReadString(streamId)
         day.highTemp = streamReadFloat32(streamId)
@@ -190,6 +192,7 @@ function ssWeatherManager:readStream(streamId, connection)
     end
 
     self:overwriteRaintable()
+    self:setupStartValues()
 end
 
 function ssWeatherManager:writeStream(streamId, connection)
@@ -197,14 +200,15 @@ function ssWeatherManager:writeStream(streamId, connection)
     streamWriteFloat32(streamId, self.soilTemp)
     streamWriteFloat32(streamId, self.cropMoistureContent)
     streamWriteBool(streamId, self.moistureEnabled)
-
-    streamWriteUInt8(streamId, self.forecastLength)
-    streamWriteUInt8(streamId, table.getn(self.weather))
-
     streamWriteFloat32(streamId, self.prevHighTemp)
+
+    streamWriteUInt8(streamId, table.getn(self.forecast))
+    streamWriteUInt8(streamId, table.getn(self.weather))
 
     for _, day in pairs(self.forecast) do
         streamWriteInt16(streamId, day.day)
+        streamWriteUInt8(streamId, day.season)
+
         streamWriteString(streamId, day.weatherState)
         streamWriteFloat32(streamId, day.highTemp)
         streamWriteFloat32(streamId, day.lowTemp)
@@ -217,6 +221,16 @@ function ssWeatherManager:writeStream(streamId, connection)
         streamWriteInt16(streamId, rain.endDay)
         streamWriteString(streamId, rain.rainTypeId)
         streamWriteFloat32(streamId, rain.duration)
+    end
+end
+
+function ssWeatherManager:setupStartValues()
+    if g_currentMission:getIsClient() then
+        self.soilTemp = Utils.getNoNil(self.soilTemp, self.startValues.soilTemp)
+
+        if g_seasons.isNewSavegame and self.snowDepth > 0 then
+            g_seasons.snow:applySnow(self.snowDepth)
+        end
     end
 end
 
@@ -242,36 +256,34 @@ end
 -- Only run this the very first time or if season length changes
 function ssWeatherManager:buildForecast()
     local startDayNum = g_seasons.environment:currentDay()
-    local ssTmax
 
     if self.prevHighTemp == nil then
-        self.prevHighTemp = 5 -- initial assumption high temperature during last day of winter.
+        self.prevHighTemp = self.startValues.highAirTemp -- initial assumption high temperature during last day of winter.
     end
 
     self.forecast = {}
     self.weather = {}
 
     for n = 1, self.forecastLength do
-        oneDayForecast = {}
+        local oneDayForecast = {}
         local oneDayRain = {}
         local ssTmax = {}
-        local Tmaxmean = {}
 
         oneDayForecast.day = startDayNum + n - 1 -- To match forecast with actual game
-        oneDayForecast.season = g_seasons.environment:seasonAtDay(startDayNum + n - 1)
+        oneDayForecast.season = g_seasons.environment:seasonAtDay(oneDayForecast.day)
 
         ssTmax = self.temperatureData[g_seasons.environment:transitionAtDay(oneDayForecast.day)]
 
-        oneDayForecast.highTemp = ssUtil.normDist(ssTmax.mode,2.5)
-        oneDayForecast.lowTemp = ssUtil.normDist(0,2) + 0.75 * ssTmax.mode-5
+        oneDayForecast.highTemp = ssUtil.normDist(ssTmax.mode, 2.5)
+        oneDayForecast.lowTemp = ssUtil.normDist(0, 2) + 0.75 * ssTmax.mode - 5
 
         if n == 1 then
-            oneDayRain = self:updateRain(oneDayForecast,0)
+            oneDayRain = self:updateRain(oneDayForecast, 0)
         else
-            if oneDayForecast.day == self.weather[n-1].endDay then
-                oneDayRain = self:updateRain(oneDayForecast,self.weather[n-1].endDayTime)
+            if oneDayForecast.day == self.weather[n - 1].endDay then
+                oneDayRain = self:updateRain(oneDayForecast, self.weather[n - 1].endDayTime)
             else
-                oneDayRain = self:updateRain(oneDayForecast,0)
+                oneDayRain = self:updateRain(oneDayForecast, 0)
             end
         end
 
@@ -285,14 +297,14 @@ function ssWeatherManager:buildForecast()
 end
 
 function ssWeatherManager:updateForecast()
-    local dayNum = g_seasons.environment:currentDay() + self.forecastLength-1
+    local dayNum = g_seasons.environment:currentDay() + self.forecastLength - 1
     local oneDayRain = {}
 
     self.prevHighTemp = self.forecast[1].highTemp  -- updating prev high temp before updating forecast table
 
-    table.remove(self.forecast,1)
+    table.remove(self.forecast, 1)
 
-    oneDayForecast = {}
+    local oneDayForecast = {}
     local ssTmax = {}
 
     oneDayForecast.day = dayNum -- To match forecast with actual game
@@ -300,23 +312,22 @@ function ssWeatherManager:updateForecast()
 
     ssTmax = self.temperatureData[g_seasons.environment:transitionAtDay(dayNum)]
 
-    if self.forecast[self.forecastLength-1].season == oneDayForecast.season then
+    if self.forecast[self.forecastLength - 1].season == oneDayForecast.season then
         --Seasonal average for a day in the current season
-        oneDayForecast.Tmaxmean = self.forecast[self.forecastLength-1].Tmaxmean
+        oneDayForecast.Tmaxmean = self.forecast[self.forecastLength - 1].Tmaxmean
 
-    elseif self.forecast[self.forecastLength-1].season ~= oneDayForecast.season then
+    elseif self.forecast[self.forecastLength - 1].season ~= oneDayForecast.season then
         --Seasonal average for a day in the next season
         oneDayForecast.Tmaxmean = ssUtil.triDist(ssTmax)
-
     end
 
-    oneDayForecast.highTemp = ssUtil.normDist(ssTmax.mode,2.5)
-    oneDayForecast.lowTemp = ssUtil.normDist(0,2) + 0.75 * ssTmax.mode-5
+    oneDayForecast.highTemp = ssUtil.normDist(ssTmax.mode, 2.5)
+    oneDayForecast.lowTemp = ssUtil.normDist(0, 2) + 0.75 * ssTmax.mode - 5
 
-    if oneDayForecast.day == self.weather[self.forecastLength-1].endDay then
-        oneDayRain = self:updateRain(oneDayForecast,self.weather[self.forecastLength-1].endDayTime)
+    if oneDayForecast.day == self.weather[self.forecastLength - 1].endDay then
+        oneDayRain = self:updateRain(oneDayForecast, self.weather[self.forecastLength - 1].endDayTime)
     else
-        oneDayRain = self:updateRain(oneDayForecast,0)
+        oneDayRain = self:updateRain(oneDayForecast, 0)
     end
 
     oneDayForecast.weatherState = oneDayRain.rainTypeId
@@ -338,7 +349,7 @@ function ssWeatherManager:seasonLengthChanged()
 
         self:buildForecast()
 
-        -- TODO(Jos): possible bug, data not sent to client. Workaround: quit all clients and rejoin
+        -- The new forecast is sent with the ssSettings event.
     end
 end
 
@@ -373,14 +384,12 @@ function ssWeatherManager:hourChanged()
 
         self:updateCropMoistureContent()
 
-        -- TODO send update event
-        -- Also call the weather changed events on client side
         g_server:broadcastEvent(ssWeatherManagerHourlyEvent:new(self.cropMoistureContent, self.snowDepth))
     end
 end
 
 -- function to output the temperature during the day and night
-function ssWeatherManager:diurnalTemp(hour, minute,lowTemp,highTemp,lowTempNext)
+function ssWeatherManager:diurnalTemp(hour, minute, lowTemp, highTemp, lowTempNext)
     local highTempPrev = 0
 
     -- need to have the high temp of the previous day
@@ -396,7 +405,7 @@ function ssWeatherManager:diurnalTemp(hour, minute,lowTemp,highTemp,lowTempNext)
         highTempPrev = highTemp
     end
 
-    local currentTime = hour + minute/60
+    local currentTime = hour + minute / 60
 
     if currentTime < 7 then
         currentTemp = (math.cos(((currentTime + 9) / 16) * math.pi / 2)) ^ 2 * (highTempPrev - lowTemp) + lowTemp
@@ -417,48 +426,48 @@ function ssWeatherManager:calculateSnowAccumulation()
     local currentSnow = self.snowDepth
 
     -- calculating snow melt as a function of radiation
-    local meltFactor = g_seasons.daylight:calculateSolarRadiation() * math.max(6 / g_seasons.environment.daysInSeason,1)
+    local meltFactor = g_seasons.daylight:calculateSolarRadiation() * math.max(6 / g_seasons.environment.daysInSeason, 1)
 
     if currentRain == nil then
         if currentTemp > -1 then
         -- snow melts at -1 if the sun is shining
-        self.snowDepth = self.snowDepth - math.max((currentTemp+1)/1000,0)*meltFactor
+        self.snowDepth = self.snowDepth - math.max((currentTemp + 1) / 1000, 0) * meltFactor
         end
 
     elseif currentRain.rainTypeId == "rain" and currentTemp > 0 then
         -- assume snow melts three times as fast if it rains
-        self.snowDepth = self.snowDepth - math.max((currentTemp+1)*3/1000,0)*meltFactor
+        self.snowDepth = self.snowDepth - math.max((currentTemp + 1) * 3 / 1000, 0) * meltFactor
 
     elseif currentRain.rainTypeId == "rain" and currentTemp <= 0 then
         -- cold rain acts as hail
         if self.snowDepth < 0 then
             self.snowDepth = 0
         end
-        self.snowDepth = self.snowDepth + 10/1000
+        self.snowDepth = self.snowDepth + 10 / 1000
 
     elseif currentRain.rainTypeId == "snow" and currentTemp < 0 then
         -- Initial value of 10 mm/hr accumulation rate. Higher rate when there is little snow to get the visual effect
         if self.snowDepth < 0 then
             self.snowDepth = 0
         elseif self.snowDepth > 0.06 then
-            self.snowDepth = self.snowDepth + 10/1000 * math.max(9 / g_seasons.environment.daysInSeason,1)
+            self.snowDepth = self.snowDepth + 10 / 1000 * math.max(9 / g_seasons.environment.daysInSeason, 1)
         else
-            self.snowDepth = self.snowDepth + 30/1000
+            self.snowDepth = self.snowDepth + 30 / 1000
         end
 
     elseif currentRain.rainTypeId == "snow" and currentTemp >= 0 then
         -- warm hail acts as rain
-        self.snowDepth = self.snowDepth - math.max((currentTemp+1)*3/1000,0)*meltFactor
+        self.snowDepth = self.snowDepth - math.max((currentTemp + 1) * 3 / 1000, 0) * meltFactor
         --g_currentMission.environment.currentRain.rainTypeId = nil
         --currentRain.rainTypeId = "rain"
 
     elseif currentRain.rainTypeId == "cloudy" and currentTemp > 0 then
         -- 75% melting (compared to clear conditions) when there is cloudy and fog
-        self.snowDepth = self.snowDepth - math.max((currentTemp+1)*0.75/1000,0)*meltFactor
+        self.snowDepth = self.snowDepth - math.max((currentTemp + 1) * 0.75 / 1000, 0) * meltFactor
 
     elseif currentRain.rainTypeId == "fog" and currentTemp > 0 then
         -- 75% melting (compared to clear conditions) when there is cloudy and fog
-        self.snowDepth = self.snowDepth - math.max((currentTemp+1)*0.75/1000,0)*meltFactor
+        self.snowDepth = self.snowDepth - math.max((currentTemp + 1) * 0.75 / 1000, 0) * meltFactor
 
     end
 
@@ -468,25 +477,25 @@ end
 --- function for calculating soil temperature
 --- Based on Rankinen et al. (2004), A simple model for predicting soil temperature in snow-covered and seasonally frozen soil: model description and testing
 function ssWeatherManager:updateSoilTemp()
-    local avgAirTemp = (self.forecast[1].highTemp*8 + self.forecast[1].lowTemp*16) / 24
+    local avgAirTemp = (self.forecast[1].highTemp * 8 + self.forecast[1].lowTemp * 16) / 24
     local deltaT = 365 / g_seasons.environment.SEASONS_IN_YEAR / g_seasons.environment.daysInSeason / 2
     local soilTemp = self.soilTemp
     local snowDamp = 1
 
     -- average soil thermal conductivity, unit: kW/m/deg C, typical value s0.4-0.8
     local facKT = 0.6
-    -- average thermal conductivity of soil and ice C_S + C_ICE, unit: kW/m/deg C, typical values C_S=1-1.3, C_ICE=4-15
+    -- average thermal conductivity of soil and ice C_S + C_ICE, unit: kW/m/deg C, typical values C_S = 1-1.3, C_ICE = 4-15
     local facCA = 10
     -- empirical snow damping parameter, unit 1/m, typical values -2 - -7
     local facfs = -5
 
     -- dampening effect of snow cover
     if self.snowDepth > 0 then
-        snowDamp = math.exp(facfs*self.snowDepth)
+        snowDamp = math.exp(facfs * self.snowDepth)
     end
 
-    self.soilTemp = soilTemp + (deltaT * facKT / (0.81 * facCA) * (avgAirTemp - soilTemp)) * snowDamp
-    --log("self.soilTemp=",self.soilTemp," soilTemp=",soilTemp," avgAirTemp=",avgAirTemp," snowDamp=",snowDamp," snowDepth=",snowDepth)
+    self.soilTemp = soilTemp + math.min(deltaT * facKT / (0.81 * facCA), 0.8) * (avgAirTemp - soilTemp) * snowDamp
+    --log("self.soilTemp=", self.soilTemp, " soilTemp=", soilTemp, " avgAirTemp=", avgAirTemp, " snowDamp=", snowDamp, " snowDepth=", snowDepth)
 end
 
 --- function for predicting when soil is frozen
@@ -525,10 +534,10 @@ function ssWeatherManager:switchRainSnow()
     for index, rain in ipairs(g_currentMission.environment.rains) do
         for jndex, fCast in ipairs(self.forecast) do
              if rain.startDay == fCast.day then
-                local hour = math.floor(rain.startDayTime/60/60/1000)
-                local minute = math.floor(rain.startDayTime/60/1000)-hour*60
+                local hour = math.floor(rain.startDayTime / 60 / 60 / 1000)
+                local minute = math.floor(rain.startDayTime / 60 / 1000) - hour * 60
 
-                local tempStartRain = self:diurnalTemp(hour, minute, fCast.lowTemp,fCast.highTemp,fCast.lowTemp)
+                local tempStartRain = self:diurnalTemp(hour, minute, fCast.lowTemp, fCast.highTemp, fCast.lowTemp)
 
                 if tempStartRain < -1 and rain.rainTypeId == "rain" then
                     g_currentMission.environment.rains[index].rainTypeId = "snow"
@@ -543,25 +552,25 @@ function ssWeatherManager:switchRainSnow()
     end
 end
 
-function ssWeatherManager:updateRain(oneDayForecast,endRainTime)
+function ssWeatherManager:updateRain(oneDayForecast, endRainTime)
     local rainFactors = self.rainData[g_seasons.environment:seasonAtDay(oneDayForecast.day)]
 
     local mu = rainFactors.mu
     local sigma = rainFactors.sigma
-    local cov = sigma/mu
+    local cov = sigma / mu
 
-    rainFactors.beta = 1 / math.sqrt(math.log(1+cov*cov))
-    rainFactors.gamma = mu / math.sqrt(1+cov*cov)
+    rainFactors.beta = 1 / math.sqrt(math.log(1 + cov * cov))
+    rainFactors.gamma = mu / math.sqrt(1 + cov * cov)
 
     local noTime = "false"
     local oneDayRain = {}
 
     local oneRainEvent = {}
 
-    p = self:_randomRain(oneDayForecast.day)
+    p = self:_randomRain(oneDayForecast)
 
     if p < rainFactors.probRain then
-        oneRainEvent = self:_rainStartEnd(p,endRainTime,rainFactors)
+        oneRainEvent = self:_rainStartEnd(p, endRainTime, rainFactors, oneDayForecast)
 
         if oneDayForecast.lowTemp < 1 then
             oneRainEvent.rainTypeId = "snow" -- forecast snow if temp < 1
@@ -570,7 +579,7 @@ function ssWeatherManager:updateRain(oneDayForecast,endRainTime)
         end
 
     elseif p > rainFactors.probRain and p < rainFactors.probClouds then
-        oneRainEvent = self:_rainStartEnd(p,endRainTime,rainFactors)
+        oneRainEvent = self:_rainStartEnd(p, endRainTime, rainFactors, oneDayForecast)
         oneRainEvent.rainTypeId = "cloudy"
     elseif oneDayForecast.lowTemp > -1 and oneDayForecast.lowTemp < 4 and endRainTime < 10800000 then
         -- morning fog
@@ -580,11 +589,11 @@ function ssWeatherManager:updateRain(oneDayForecast,endRainTime)
 
         -- longer fog in winter and autumn
         if oneDayForecast.season == g_seasons.environment.SEASON_WINTER or oneDayForecast.season == g_seasons.environment.SEASON_AUTUMN then
-            oneRainEvent.startDayTime = nightEnd*60*60*1000
-            oneRainEvent.endDayTime = (dayStart+4)*60*60*1000
+            oneRainEvent.startDayTime = nightEnd * 60 * 60 * 1000
+            oneRainEvent.endDayTime = (dayStart + 4) * 60 * 60 * 1000
         else
-            oneRainEvent.startDayTime = nightEnd*60*60*1000
-            oneRainEvent.endDayTime = (dayStart+1)*60*60*1000
+            oneRainEvent.startDayTime = nightEnd * 60 * 60 * 1000
+            oneRainEvent.endDayTime = (dayStart + 1) * 60 * 60 * 1000
         end
         oneRainEvent.duration = oneRainEvent.endDayTime - oneRainEvent.startDayTime
         oneRainEvent.rainTypeId = "fog"
@@ -601,13 +610,13 @@ function ssWeatherManager:updateRain(oneDayForecast,endRainTime)
     return oneDayRain
 end
 
-function ssWeatherManager:_rainStartEnd(p,endRainTime,rainFactors)
+function ssWeatherManager:_rainStartEnd(p, endRainTime, rainFactors, oneDayForecast)
     local oneRainEvent = {}
 
     oneRainEvent.startDay = oneDayForecast.day
-    oneRainEvent.duration = math.min(math.max(math.exp(ssUtil.lognormDist(rainFactors.beta,rainFactors.gamma,p)),2),24)*60*60*1000
+    oneRainEvent.duration = math.min(math.max(math.exp(ssUtil.lognormDist(rainFactors.beta, rainFactors.gamma, p)), 2), 24) * 60 * 60 * 1000
     -- rain can start from 01:00 (or 1 hour after last rain ended) to 23.00
-    oneRainEvent.startDayTime = math.random(3600 + endRainTime/1000,82800) *1000
+    oneRainEvent.startDayTime = math.random(3600 + endRainTime / 1000, 82800) * 1000
 
     if oneRainEvent.startDayTime + oneRainEvent.duration < 86400000 then
         oneRainEvent.endDay = oneRainEvent.startDay
@@ -620,20 +629,20 @@ function ssWeatherManager:_rainStartEnd(p,endRainTime,rainFactors)
     return oneRainEvent
 end
 
-function ssWeatherManager:_randomRain(day)
-    ssTmax = self.temperatureData[g_seasons.environment:transitionAtDay(day)]
+function ssWeatherManager:_randomRain(oneDayForecast)
+    ssTmax = self.temperatureData[g_seasons.environment:transitionAtDay(oneDayForecast.day)]
 
     if oneDayForecast.season == g_seasons.environment.SEASON_WINTER or oneDayForecast.season == g_seasons.environment.SEASON_AUTUMN then
         if oneDayForecast.highTemp > ssTmax.mode then
-            p = math.random()^1.5 --increasing probability for precipitation if the temp is high
+            p = math.random() ^ 1.5 --increasing probability for precipitation if the temp is high
         else
-            p = math.random()^0.75 --decreasing probability for precipitation if the temp is high
+            p = math.random() ^ 0.75 --decreasing probability for precipitation if the temp is high
         end
     elseif oneDayForecast.season == g_seasons.environment.SEASON_SPRING or oneDayForecast.season == g_seasons.environment.SEASON_SUMMER then
         if oneDayForecast.highTemp < ssTmax.mode then
-            p = math.random()^1.5 --increasing probability for precipitation if the temp is high
+            p = math.random() ^ 1.5 --increasing probability for precipitation if the temp is high
         else
-            p = math.random()^0.75 --decreasing probability for precipitation if the temp is high
+            p = math.random() ^ 0.75 --decreasing probability for precipitation if the temp is high
         end
     end
 
@@ -708,6 +717,11 @@ end
 
 function ssWeatherManager:loadFromXML(path)
     local file = loadXMLFile("weather", path)
+
+    -- Load start values. This assumes at least 1 file has those values. (Seasons data)
+    self.startValues.soilTemp = ssXMLUtil.getFloat(file, "weather.startValues.soilTemp", self.startValues.soilTemp)
+    self.startValues.highAirTemp = ssXMLUtil.getFloat(file, "weather.startValues.highAirTemp", self.startValues.highAirTemp)
+    self.startValues.snowDepth = ssXMLUtil.getFloat(file, "weather.startValues.snowDepth", self.startValues.snowDepth)
 
     -- Load temperature data
     local i = 0
@@ -811,7 +825,7 @@ function ssWeatherManager:updateCropMoistureContent()
 
     local tmpMoisture = prevCropMoist + (relativeHumidity - prevCropMoist) / 1000
     -- added effect of some wind drying crops
-    local deltaMoisture = 0.3 + solarRadiation / 40 * (tmpMoisture - 10) * math.sqrt(math.max(9 / g_seasons.environment.daysInSeason,1))
+    local deltaMoisture = 0.3 + solarRadiation / 40 * (tmpMoisture - 10) * math.sqrt(math.max(9 / g_seasons.environment.daysInSeason, 1))
 
     self.cropMoistureContent = tmpMoisture - deltaMoisture
 
@@ -833,9 +847,9 @@ function ssWeatherManager:updateHail(day)
         dayStart, dayEnd, _, _ = g_seasons.daylight:calculateStartEndOfDay(julianDay)
 
         self.weather[1].rainTypeId = "hail"
-        self.weather[1].startDayTime = ssUtil.triDist({["min"] = dayStart,["mode"] = dayStart + 4 ,["max"] = dayEnd}) * 60 * 60 * 1000
+        self.weather[1].startDayTime = ssUtil.triDist({["min"] = dayStart, ["mode"] = dayStart + 4, ["max"] = dayEnd}) * 60 * 60 * 1000
         self.weather[1].endDayTime = self.weather[1].startDayTime + self.weather[1].duration
-        self.weather[1].duration = ssUtil.triDist({["min"] = 1,["mode"] = 2,["max"] = 3}) * 60 * 60 * 1000
+        self.weather[1].duration = ssUtil.triDist({["min"] = 1, ["mode"] = 2, ["max"] = 3}) * 60 * 60 * 1000
         self.weather[1].startDay = self.forecast[1].day
         self.weather[1].endDay = self.forecast[1].day
 

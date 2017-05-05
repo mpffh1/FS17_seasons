@@ -94,7 +94,7 @@ function ssUtil.nextWeekDayNumber(currentDay)
     return (currentDay + 1) % g_seasons.environment.DAYS_IN_WEEK
 end
 
--- Calculate the split of days into ealy,mid and late season
+-- Calculate the split of days into ealy, mid and late season
 function ssUtil.calcDaysPerTransition()
     local l = g_seasons.environment.daysInSeason / 3.0
     local earlyStart = 1
@@ -115,12 +115,12 @@ function ssUtil.triDist(m)
     --math.randomseed( g_currentMission.time )
     math.random()
 
-    pmode = (m.mode-m.min)/(m.max-m.min)
+    pmode = (m.mode - m.min) / (m.max - m.min)
     p = math.random()
     if p < pmode then
-        return math.sqrt(p*(m.max-m.min)*(m.mode-m.min))+m.min
+        return math.sqrt(p * (m.max - m.min) * (m.mode - m.min)) + m.min
     else
-        return m.max-math.sqrt((1-p)*(m.max-m.min)*(m.max-m.mode))
+        return m.max - math.sqrt((1 - p) * (m.max - m.min) * (m.max - m.mode))
     end
 end
 
@@ -130,11 +130,11 @@ function ssUtil.rationalApproximation(t)
     local c = {2.515517, 0.802853, 0.010328}
     local d = {1.432788, 0.189269, 0.001308}
 
-    return t - ((c[3]*t + c[2])*t + c[1]) / (((d[3]*t + d[2])*t + d[1])*t + 1.0)
+    return t - ((c[3] * t + c[2]) * t + c[1]) / (((d[3] * t + d[2]) * t + d[1]) * t + 1.0)
 end
 
 -- Outputs a random sample from a normal distribution with mean mu and standard deviation sigma
-function ssUtil.normDist(mu,sigma)
+function ssUtil.normDist(mu, sigma)
     --math.randomseed( g_currentMission.time )
     math.random()
 
@@ -156,9 +156,9 @@ function ssUtil.lognormDist(beta, gamma)
     local z
 
     if p < 0.5 then
-        z = ssUtil.rationalApproximation( math.sqrt(-2.0*math.log(p)))*-1
+        z = ssUtil.rationalApproximation( math.sqrt(-2.0 * math.log(p))) * -1
     else
-        z = ssUtil.rationalApproximation( math.sqrt(-2.0*math.log(1-p)))
+        z = ssUtil.rationalApproximation( math.sqrt(-2.0 * math.log(1 - p)))
     end
 
     return gamma * math.exp ( z / beta )
@@ -230,7 +230,7 @@ end
 
 -- Yep, LUA does not have a math.round. It's a first.
 function mathRound(value, idp)
-    local mult = 10^(idp or 0)
+    local mult = 10 ^ (idp or 0)
     return math.floor(value * mult + 0.5) / mult
 end
 
@@ -262,36 +262,36 @@ function arrayLength(arr)
 end
 
 function print_r(t)
-    local print_r_cache={}
-    local function sub_print_r(t,indent)
+    local print_r_cache = {}
+    local function sub_print_r(t, indent)
         if (print_r_cache[tostring(t)]) then
-            print(indent.."*"..tostring(t))
+            print(indent .. "*" .. tostring(t))
         else
-            print_r_cache[tostring(t)]=true
-            if (type(t)=="table") then
-                for pos,val in pairs(t) do
+            print_r_cache[tostring(t)] = true
+            if (type(t) == "table") then
+                for pos, val in pairs(t) do
                     pos = tostring(pos)
-                    if (type(val)=="table") then
-                        print(indent.."["..pos.."] => "..tostring(t).." {")
-                        sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
-                        print(indent..string.rep(" ",string.len(pos)+6).."}")
-                    elseif (type(val)=="string") then
-                        print(indent.."["..pos..'] => "'..val..'"')
+                    if (type(val) == "table") then
+                        print(indent .. "[" .. pos .. "] => " .. tostring(t) .. " {")
+                        sub_print_r(val, indent .. string.rep(" ", string.len(pos) + 8))
+                        print(indent .. string.rep(" ", string.len(pos) + 6) .. "}")
+                    elseif (type(val) == "string") then
+                        print(indent .. "[" .. pos .. '] => "' .. val .. '"')
                     else
-                        print(indent.."["..pos.."] => "..tostring(val))
+                        print(indent .. "[" .. pos .. "] => " .. tostring(val))
                     end
                 end
             else
-                print(indent..tostring(t))
+                print(indent .. tostring(t))
             end
         end
     end
-    if (type(t)=="table") then
-        print(tostring(t).." {")
-        sub_print_r(t,"  ")
+    if (type(t) == "table") then
+        print(tostring(t) .. " {")
+        sub_print_r(t, "  ")
         print("}")
     else
-        sub_print_r(t,"  ")
+        sub_print_r(t, "  ")
     end
     print()
 end

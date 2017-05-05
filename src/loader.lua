@@ -46,10 +46,10 @@ local function split(str, pat)
 
     while s do
         if s ~= 1 or cap ~= "" then
-            table.insert(t,cap)
+            table.insert(t, cap)
         end
 
-        last_end = e+1
+        last_end = e + 1
         s, e, cap = str:find(fpat, last_end)
     end
 
@@ -99,6 +99,10 @@ local files = {
     "misc/ssPedestrianSystem",
     "misc/ssTrafficSystem",
     "misc/ssTreeManager",
+    "misc/ssSwathManager",
+    "misc/ssBaleManager",
+    "misc/ssAnimals",
+    "misc/ssSkipNight",
 
     -- Adjusted objects
     "objects/ssBunkerSilo",
@@ -112,21 +116,13 @@ local files = {
 
     -- GUI
     "gui/ssHelpLines",
-    "gui/ssSeasonsMenu"
+    "gui/ssSeasonsMenu",
+    "gui/ssCatchingUp"
 }
 
 local isDebug = false--<%=debug %>
 if isDebug then
     table.insert(files, "utils/ssDebug")
-end
-
-if not g_modIsLoaded["FS17_RM_S01_Grass"] then
-    table.insert(files, "misc/ssSwathManager")
-    table.insert(files, "misc/ssBaleManager")
-end
-
-if not g_modIsLoaded["FS17_RM_S03_Animals"] then
-    table.insert(files, "misc/ssAnimals")
 end
 
 -- Classes used for automation of loading and multiplayer

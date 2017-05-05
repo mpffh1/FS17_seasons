@@ -361,14 +361,14 @@ function ssSeasonsMenu:getTransitionHeaders()
     local transitionsDisplayData = {}
     local data = ssUtil.calcDaysPerTransition()
 
-    for index,value in pairs(data) do
+    for index, value in pairs(data) do
         if index % 2 == 1 then
             local putIndex = index - ((index - 1) / 2)
 
-            if value == data[index+1] then
+            if value == data[index + 1] then
                 transitionsDisplayData[putIndex] = tostring(value)
             else
-                transitionsDisplayData[putIndex] = value .. "-" .. data[index+1]
+                transitionsDisplayData[putIndex] = value .. "-" .. data[index + 1]
             end
         end
     end
@@ -648,28 +648,31 @@ end
 
 function ssSeasonsMenu:onClickMultiplayerLogin(element)
     if not g_currentMission.isMasterUser then
-        local dialog = g_gui:showDialog("PasswordDialog")
-        dialog.target:setCallback(self.onAdminPassword, self)
+        g_gui:showPasswordDialog({
+            text = g_i18n:getText("ui_enterAdminPassword"),
+            callback = self.onAdminPassword,
+            target = self,
+            defaultPassword = ""
+        })
     end
 end
 
 function ssSeasonsMenu:onAdminPassword(password, login)
-    if login then
-        g_client:getServerConnection():sendEvent(GetAdminEvent:new(password))
+    g_client:getServerConnection():sendEvent(GetAdminEvent:new(password))
+end
+
+function ssSeasonsMenu:ingameOnAdminLoginSuccess(superFunc)
+    if g_gui.currentGuiName == "SeasonsMenu" then
+        g_seasons.mainMenu:updateServerSettingsVisibility()
+
+        -- Close new password dialog. (No idea why it shows)
+        g_gui:closeAllDialogs()
     else
-        g_gui:closeDialogByName("PasswordDialog")
+        superFunc(self)
     end
 end
 
-function GetAdminAnswerEvent.onAnswerOk(args)
-    if args ~= nil and args[1] == true then
-        if g_gui.currentGuiName == "SeasonsMenu" then
-            g_seasons.mainMenu:updateServerSettingsVisibility()
-        else
-            g_inGameMenu:onAdminLoginSuccess()
-        end
-    end
-end
+InGameMenu.onAdminLoginSuccess = Utils.overwrittenFunction(InGameMenu.onAdminLoginSuccess, ssSeasonsMenu.ingameOnAdminLoginSuccess)
 
 ------------------------------------------
 -- SETTINGS PAGE
@@ -736,7 +739,7 @@ function ssSeasonsMenu:onClickSaveSettings()
     if self.settingElements.seasonLength:getState() * 3 ~= g_seasons.environment.daysInSeason
        or self.settingElements.snow:getState() ~= ssSnow.mode then
         local text = ssLang.getText("dialog_applySettings")
-        g_gui:showYesNoDialog({text=text, callback=self.onYesNoSaveSettings, target=self})
+        g_gui:showYesNoDialog({text = text, callback = self.onYesNoSaveSettings, target = self})
     else
         self:onYesNoSaveSettings(true)
     end

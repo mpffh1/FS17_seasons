@@ -52,16 +52,16 @@ end
 ----------------------------
 
 function ssMain:load(savegame, key)
-    self.showControlsInHelpScreen = ssXMLUtil.getXMLBool(savegame, key .. ".settings.showControlsInHelpScreen", true)
-    self.savegameVersion = ssXMLUtil.getXMLInt(savegame, key .. ".version", 1)
+    self.showControlsInHelpScreen = ssXMLUtil.getBool(savegame, key .. ".settings.showControlsInHelpScreen", true)
+    self.savegameVersion = ssXMLUtil.getInt(savegame, key .. ".version", 1)
 
     self.isNewSavegame = savegame == nil
     self.isOldSavegame = savegame ~= nil and not hasXMLProperty(savegame, key) -- old game, no seasons
 end
 
 function ssMain:save(savegame, key)
-    ssXMLUtil.setXMLBool(savegame, key .. ".settings.showControlsInHelpScreen", self.showControlsInHelpScreen)
-    ssXMLUtil.setXMLInt(savegame, key .. ".version", self.savegameVersion)
+    ssXMLUtil.setBool(savegame, key .. ".settings.showControlsInHelpScreen", self.showControlsInHelpScreen)
+    ssXMLUtil.setInt(savegame, key .. ".version", self.savegameVersion)
 end
 
 ----------------------------
@@ -99,6 +99,7 @@ function ssMain:loadMap()
 
     -- Load the GUI configurations
     g_gui:loadGui(self.modDir .. "resources/gui/SeasonsMenu.xml", "SeasonsMenu", self.mainMenu)
+    FocusManager:setGui("MPLoadingScreen")
 
     -- Remove the (hacked) store items
     StoreItemsUtil.removeStoreItem(StoreItemsUtil.storeItemsByXMLFilename[string.lower(self.modDir .. "resources/fakeStoreItem/item.xml")].id)

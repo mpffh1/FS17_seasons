@@ -34,28 +34,29 @@ function ssVehicle:preLoad()
 end
 
 function ssVehicle:load(savegame, key)
-    self.snowTracksEnabled = ssXMLUtil.getXMLBool(savegame, key .. ".settings.snowTracks", true)
+    self.snowTracksEnabled = ssXMLUtil.getBool(savegame, key .. ".settings.snowTracks", true)
 end
 
 function ssVehicle:save(savegame, key)
-    ssXMLUtil.setXMLBool(savegame, key .. ".settings.snowTracks", self.snowTracksEnabled)
+    ssXMLUtil.setBool(savegame, key .. ".settings.snowTracks", self.snowTracksEnabled)
 end
 
 function ssVehicle:loadMap()
     g_currentMission.environment:addDayChangeListener(self)
     g_seasons.environment:addSeasonLengthChangeListener(self)
 
-    Vehicle.getDailyUpKeep = Utils.overwrittenFunction(Vehicle.getDailyUpKeep, ssVehicle.getDailyUpKeep)
-    Vehicle.getSellPrice = Utils.overwrittenFunction(Vehicle.getSellPrice, ssVehicle.getSellPrice)
-    Vehicle.getSpecValueAge = Utils.overwrittenFunction(Vehicle.getSpecValueAge, ssVehicle.getSpecValueAge)
+    Vehicle.getDailyUpKeep = Utils.overwrittenFunction(Vehicle.getDailyUpKeep, ssVehicle.vehicleGetDailyUpKeep)
+    Vehicle.getSellPrice = Utils.overwrittenFunction(Vehicle.getSellPrice, ssVehicle.vehicleGetSellPrice)
+    Vehicle.getSpecValueAge = Utils.overwrittenFunction(Vehicle.getSpecValueAge, ssVehicle.vehicleGetSpecValueAge)
     Vehicle.getSpeedLimit = Utils.overwrittenFunction(Vehicle.getSpeedLimit, ssVehicle.getSpeedLimit)
     Vehicle.draw = Utils.overwrittenFunction(Vehicle.draw, ssVehicle.vehicleDraw)
     Vehicle.updateWheelFriction = Utils.overwrittenFunction(Vehicle.updateWheelFriction, ssVehicle.updateWheelFriction)
-    Vehicle.getGroundType = Utils.overwrittenFunction(Vehicle.getGroundType, ssVehicle.getGroundType)
+    Vehicle.updateWheelTireFriction = Utils.appendedFunction(Vehicle.updateWheelTireFriction, ssVehicle.vehicleUpdateWheelTireFriction)
     Combine.getIsThreshingAllowed = Utils.overwrittenFunction(Combine.getIsThreshingAllowed, ssVehicle.getIsThreshingAllowed)
+
     -- Vehicle.getSpecValueDailyUpKeep = Utils.overwrittenFunction(Vehicle.getSpecValueDailyUpKeep, ssVehicle.getSpecValueDailyUpKeep)
 
-    VehicleSellingPoint.sellAreaTriggerCallback = Utils.overwrittenFunction(VehicleSellingPoint.sellAreaTriggerCallback, ssVehicle.sellAreaTriggerCallback)
+    VehicleSellingPoint.sellAreaTriggerCallback = Utils.appendedFunction(VehicleSellingPoint.sellAreaTriggerCallback, ssVehicle.sellAreaTriggerCallback)
 
     g_currentMission:setAutomaticMotorStartEnabled(false)
 
@@ -85,7 +86,7 @@ end
 function ssVehicle:dayChanged()
     for i, vehicle in pairs(g_currentMission.vehicles) do
         if SpecializationUtil.hasSpecialization(ssRepairable, vehicle.specializations) and not SpecializationUtil.hasSpecialization(Motorized, vehicle.specializations) then
-            self:repair(vehicle,storeItem)
+            self:repair(vehicle, storeItem)
         end
     end
 end
@@ -110,14 +111,13 @@ function ssVehicle:installVehicleSpecializations()
                 table.insert(vehicleType.specializations, SpecializationUtil.getSpecialization("motorFailure"))
             end
 
-            if not g_modIsLoaded["FS17_RM_S01_Grass"] and SpecializationUtil.hasSpecialization(Tedder, vehicleType.specializations) then
+            if SpecializationUtil.hasSpecialization(Tedder, vehicleType.specializations) then
                 table.insert(vehicleType.specializations, SpecializationUtil.getSpecialization("ss_tedder"))
             end
 
             if SpecializationUtil.hasSpecialization(TreePlanter, vehicleType.specializations) then
                 table.insert(vehicleType.specializations, SpecializationUtil.getSpecialization("variableTreePlanter"))
             end
-
         end
     end
 end
@@ -235,7 +235,7 @@ function ssVehicle:maintenanceRepairCost(vehicle, storeItem, isRepair)
     local maintenanceCost = 0
 
     if daysSinceLastRepair >= ssVehicle.repairInterval or isRepair then
-        maintenanceCost = (newRepairCost - prevRepairCost) * repairFactor * (1 + ssVehicle.DIRT_FACTOR * avgDirtAmount)
+        maintenanceCost = (newRepairCost - prevRepairCost) * repairFactor * (0.8 + ssVehicle.DIRT_FACTOR * avgDirtAmount ^ 2)
     end
 
     return maintenanceCost
@@ -282,13 +282,13 @@ function ssVehicle:getRepairShopCost(vehicle, storeItem, atDealer)
     local difficultyMultiplier = 1 -- FIXME * difficulty mutliplier
     local workCosts = atDealer and 45 or 35
 
-    local overdueFactor = self:calculateOverdueFactor(vehicle) ^ 2
+    local overdueFactor = self:calculateOverdueFactor(vehicle)
 
-    return (costs + workCosts + 50 * (overdueFactor -1 )) * dealerMultiplier * difficultyMultiplier * overdueFactor
+    return (costs + workCosts + 50 * (overdueFactor - 1)) * dealerMultiplier * difficultyMultiplier * overdueFactor^2
 end
 
 -- all (guard)
-function ssVehicle:getDailyUpKeep(superFunc)
+function ssVehicle:vehicleGetDailyUpKeep(superFunc)
     local storeItem = StoreItemsUtil.storeItemsByXMLFilename[self.configFileName:lower()]
 
     -- If not repairable, show default amount
@@ -303,7 +303,7 @@ function ssVehicle:getDailyUpKeep(superFunc)
     if SpecializationUtil.hasSpecialization(Motorized, self.specializations) then
         costs = (costs + ssVehicle:maintenanceRepairCost(self, storeItem, false))
     else
-        costs = costs + ssVehicle:maintenanceRepairCost(self, storeItem, false) + ssVehicle:getRepairShopCost(self,storeItem,true)
+        costs = costs + ssVehicle:maintenanceRepairCost(self, storeItem, false) + ssVehicle:getRepairShopCost(self, storeItem, true)
     end
 
     return costs
@@ -325,7 +325,7 @@ function ssVehicle:calculateOverdueFactor(vehicle)
     return overdueFactor
 end
 
-function ssVehicle:getSellPrice(superFunc)
+function ssVehicle:vehicleGetSellPrice(superFunc)
     local storeItem = StoreItemsUtil.storeItemsByXMLFilename[self.configFileName:lower()]
     local price = storeItem.price
     local minSellPrice = storeItem.price * 0.03
@@ -348,7 +348,7 @@ function ssVehicle:getSellPrice(superFunc)
         p3 = -4
         p4 = 85
         depFac = (p1 * age ^ 3 + p2 * age ^ 2 + p3 * age + p4) / 100
-        brandFac = math.min(math.sqrt(power / storeItem.dailyUpkeep),1.1)
+        brandFac = math.min(math.sqrt(power / storeItem.dailyUpkeep), 1.1)
 
     elseif storeItem.category == "harvesters" or storeItem.category == "forageHarvesters" or storeItem.category == "potatoHarvesters" or storeItem.category == "beetHarvesters" then
         p1 = 81
@@ -377,12 +377,16 @@ function ssVehicle:getSellPrice(superFunc)
 end
 
 -- Replace the visual age with the age since last repair, because actual age is useless
-function ssVehicle:getSpecValueAge(superFunc, vehicle) -- storeItem, realItem
-    if vehicle ~= nil and vehicle.ssLastRepairDay ~= nil and SpecializationUtil.hasSpecialization(Motorized, vehicle.specializations) then
-        return string.format(g_i18n:getText("shop_age"), g_seasons.environment.daysInSeason * 2 - (g_seasons.environment:currentDay() - vehicle.ssLastRepairDay))
-    elseif vehicle ~= nil and vehicle.age ~= nil then
+function ssVehicle.vehicleGetSpecValueAge(superFunc, storeItem, realItem) -- storeItem, realItem
+    if realItem ~= nil and realItem.ssLastRepairDay ~= nil and SpecializationUtil.hasSpecialization(Motorized, realItem.specializations) then
+        local daysUntil = math.max(g_seasons.environment.daysInSeason * 2 - (g_seasons.environment:currentDay() - realItem.ssLastRepairDay), 0)
+
+        return string.format(g_i18n:getText("shop_age"), daysUntil)
+    elseif realItem ~= nil and realItem.age ~= nil then
         return "-"
-    elseif not SpecializationUtil.hasSpecialization(Motorized, vehicle.specializations) then
+
+    -- FIXME this is never called because all vehicles have an age
+    elseif not SpecializationUtil.hasSpecialization(Motorized, realItem.specializations) then
         return ssLang.getText("SS_REPAIR_AT_MIDNIGHT", "at midnight")
     end
 
@@ -391,25 +395,21 @@ end
 
 -- Tell a vehicle when it is in the area of a workshop. This information is
 -- then used in ssRepairable to show or hide the repair option
-function ssVehicle:sellAreaTriggerCallback(superFunc, triggerId, otherId, onEnter, onLeave, onStay, otherShapeId)
+function ssVehicle:sellAreaTriggerCallback(triggerId, otherId, onEnter, onLeave, onStay, otherShapeId)
     if otherShapeId ~= nil and (onEnter or onLeave) then
         if onEnter then
-            self.vehicleInRange[otherShapeId] = true
-
             local vehicle = g_currentMission.nodeToVehicle[otherShapeId]
+
             if vehicle ~= nil then
                 vehicle.ssInRangeOfWorkshop = self
             end
         elseif onLeave then
-            self.vehicleInRange[otherShapeId] = nil
-
             local vehicle = g_currentMission.nodeToVehicle[otherShapeId]
+
             if vehicle ~= nil then
                 vehicle.ssInRangeOfWorkshop = nil
             end
         end
-
-        self:determineCurrentVehicle()
     end
 end
 
@@ -454,27 +454,21 @@ function ssVehicle:vehicleDraw(superFunc, dt)
     end
 end
 
-function ssVehicle:updateWheelTireFriction(superFunc, wheel)
+function ssVehicle:vehicleUpdateWheelTireFriction(wheel)
     if self.isServer and self.isAddedToPhysics then
         if wheel.inSnow then
-            if wheel.tireType == WheelsUtil.getTireType('chains') then
-                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale*wheel.tireGroundFrictionCoeff)
-            elseif wheel.tireType == WheelsUtil.getTireType('crawler') then
-                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale*wheel.tireGroundFrictionCoeff*0.5)
-            elseif wheel.tireType == WheelsUtil.getTireType('studded') then
-                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale*wheel.tireGroundFrictionCoeff*0.7)
+            if wheel.tireType == WheelsUtil.getTireType("chains") then
+                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale * wheel.tireGroundFrictionCoeff)
+            elseif wheel.tireType == WheelsUtil.getTireType("crawler") then
+                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale * wheel.tireGroundFrictionCoeff * 0.5)
+            elseif wheel.tireType == WheelsUtil.getTireType("studded") then
+                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale * wheel.tireGroundFrictionCoeff * 0.7)
             else
-                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale*wheel.tireGroundFrictionCoeff*0.1)
+                setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale * wheel.tireGroundFrictionCoeff * 0.1)
             end
-        else
-            setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale*wheel.tireGroundFrictionCoeff)
+        -- else
+        --     setWheelShapeTireFriction(wheel.node, wheel.wheelShape, wheel.maxLongStiffness, wheel.maxLatStiffness, wheel.maxLatStiffnessLoad, wheel.frictionScale * wheel.tireGroundFrictionCoeff)
         end
-	end
-end
-
-function ssVehicle:getGroundType(superFunc,wheel)
-    if wheel.inSnow then
-        return WheelsUtil.GROUND_SOFT_TERRAIN
     end
 end
 
@@ -505,14 +499,14 @@ function ssVehicle:registerWheelTypes()
     snowchainsFrictionCoeffsWet[WheelsUtil.GROUND_SOFT_TERRAIN] = 1.05
     snowchainsFrictionCoeffsWet[WheelsUtil.GROUND_FIELD] = 0.95
 
-    WheelsUtil.registerTireType("studded",studdedFrictionCoeffs,studdedFrictionCoeffsWet)
-    WheelsUtil.registerTireType("chains",snowchainsFrictionCoeffs,snowchainsFrictionCoeffsWet)
+    WheelsUtil.registerTireType("studded", studdedFrictionCoeffs, studdedFrictionCoeffsWet)
+    WheelsUtil.registerTireType("chains", snowchainsFrictionCoeffs, snowchainsFrictionCoeffsWet)
 end
 
 -- Override the threshing for the moisture system
-function ssVehicle:getIsThreshingAllowed(superFunc,earlyWarning)
+function ssVehicle:getIsThreshingAllowed(superFunc, earlyWarning)
     if not g_seasons.weather.moistureEnabled then
-        return superFunc(self,earlyWarning)
+        return superFunc(self, earlyWarning)
     end
 
     if self.allowThreshingDuringRain then

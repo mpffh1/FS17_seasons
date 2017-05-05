@@ -29,7 +29,6 @@ ssGrowthManagerDebugView.transitionIndexToName =
 ssGrowthManagerDebugView.debugView = false
 
 function ssGrowthManagerDebugView:loadMap(name)
-    --self:transitionsDisplayData() --for testing only right now
     addConsoleCommand("ssGrowthDebugView", "Displays growth related debug info", "consoleCommandDebugView", self);
 end
 
@@ -52,7 +51,7 @@ function ssGrowthManagerDebugView:draw()
 
         local cropsThatCanGrow = ""
 
-        for fruitName in pairs(ssGrowthManager.willGerminate) do
+        for fruitName in pairs(ssGrowthManager.willGerminateData) do
             if ssGrowthManager.willGerminateData[fruitName] == true then
                 cropsThatCanGrow = cropsThatCanGrow .. fruitName .. " "
             end
